@@ -1,103 +1,199 @@
-import Image from "next/image";
+// app/page.tsx
+"use client";
+import { useEffect, useState } from "react";
 
-export default function Home() {
+type Service = { id: string; name: string; duration_minutes: number };
+type Slot = { start: string; end: string };
+
+export default function Page() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [serviceId, setServiceId] = useState<string>("");
+  const [date, setDate] = useState<string>("");
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [picked, setPicked] = useState<Slot | null>(null);
+  const [msg, setMsg] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // সার্ভিস লিস্ট লোড
+  useEffect(() => {
+    (async () => {
+      const res = await fetch("/api/services", { cache: "no-store" });
+      const data = await res.json();
+      setServices(data.services || []);
+      if (data.services?.[0]) setServiceId(data.services[0].id);
+    })();
+  }, []);
+
+  // স্লট লোড
+  async function loadSlots() {
+    if (!date || !serviceId) return;
+    setLoading(true);
+    setMsg("");
+    try {
+      const res = await fetch(
+        `/api/slots?serviceId=${serviceId}&date=${date}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      setSlots(data.slots || []);
+    } catch {
+      setMsg("স্লট লোড করতে সমস্যা হয়েছে!");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // বুকিং
+  async function bookNow() {
+    if (!picked) {
+      setMsg("একটা সময় নির্বাচন করুন.");
+      return;
+    }
+    if (!name || !email) {
+      setMsg("নাম ও ইমেইল দিন.");
+      return;
+    }
+
+    setSubmitting(true);
+    setMsg("বুকিং হচ্ছে...");
+    try {
+      const res = await fetch("/api/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceId,
+          start: picked.start,
+          end: picked.end,
+          name,
+          email,
+        }),
+      });
+      if (res.ok) setMsg("বুকিং কনফার্ম হয়েছে ✅");
+      else if (res.status === 409) setMsg("এই সময়টা আগেই বুকড!");
+      else setMsg("বুকিং ফেল হয়েছে, আবার চেষ্টা করুন.");
+    } catch {
+      setMsg("সার্ভার এরর!");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // নতুন সার্ভিস/ডেট সিলেক্ট করলে স্লট রিসেট
+  useEffect(() => {
+    setSlots([]);
+    setPicked(null);
+  }, [serviceId, date]);
+
+  // শুধু ভবিষ্যতের স্লট দেখাও
+  const now = new Date();
+  const visibleSlots = slots.filter((s) => new Date(s.start) > now);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main
+      style={{
+        maxWidth: 720,
+        margin: "40px auto",
+        padding: 16,
+        fontFamily: "system-ui",
+      }}
+    >
+      <h1 style={{ fontSize: 28, fontWeight: 700 }}>Booking (Supabase)</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+        <label>
+          Service:
+          <select
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value)}
+            style={{ marginLeft: 8 }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.duration_minutes}m)
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Date:
+          <input
+            type="date"
+            value={date}
+            min={new Date().toISOString().slice(0, 10)} // আজকের আগের তারিখ ব্লক
+            onChange={(e) => setDate(e.target.value)}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+
+        <button onClick={loadSlots} disabled={!date || !serviceId || loading}>
+          {loading ? "লোড হচ্ছে..." : "ফ্রি স্লট দেখাও"}
+        </button>
+      </div>
+
+      <hr style={{ margin: "20px 0" }} />
+
+      <div>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Available Slots</h2>
+        {visibleSlots.length === 0 && (
+          <p>আজ/নির্বাচিত তারিখে কোনো ফ্রি স্লট নেই।</p>
+        )}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+            gap: 8,
+          }}
+        >
+          {visibleSlots.map((s, i) => (
+            <button
+              key={i}
+              onClick={() => setPicked(s)}
+              style={{
+                border: "1px solid #ccc",
+                borderRadius: 8,
+                padding: 8,
+                background:
+                  picked?.start === s.start ? "#e6f7ff" : "white",
+              }}
+            >
+              {new Date(s.start).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              {" — "}
+              {new Date(s.end).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </button>
+          ))}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </div>
+
+      <hr style={{ margin: "20px 0" }} />
+
+      <div style={{ display: "grid", gap: 8 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Your Details</h2>
+        <input
+          placeholder="Your name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <button onClick={bookNow} disabled={!picked || submitting}>
+          {submitting ? "বুকিং হচ্ছে..." : "Confirm Booking"}
+        </button>
+        {msg && <p style={{ marginTop: 8 }}>{msg}</p>}
+      </div>
+    </main>
   );
 }
